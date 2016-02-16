@@ -1,9 +1,23 @@
 import Foundation
 
+public struct PkgConfigResource {
+    let package: String
+    let version: String
+}
+
+public struct PkgConfigPackage {
+    let name: String
+    let description: String
+    let provides: [PkgConfigResource]
+    //let requires: [PkgConfigResource]
+    //let cflags: String
+    //let lflags: String
+}
+
 // Note: On ubuntu linux, pkg-config returns a 0 exit status to signal success.
 //       That might not be the case in every environment.
 public class PkgConfig {
-    private static singleton: PkgConfig
+    private static let sharedInstance = PkgConfig()
     private let executablePath: String?
 
     private init() {
@@ -27,10 +41,7 @@ public class PkgConfig {
     }
 
     public static defaultPkgConfig() -> PkgConfig {
-        if nil == PkgConfig.singleton {
-            PkgConfig.singleton = PkgConfig()
-        }
-        return PkgConfig.singleton
+        return PkgConfig.sharedInstance
     }
 
     // We could also do a callback-based version of this api, but these calls
@@ -56,7 +67,14 @@ public class PkgConfig {
         return false
     }
 
-    public availablePackages() -> [(tag: String, description: String)] throws {
+    public package(package: String) -> PkgConfigPackage? throws {
+    }
+
+    subscript(index: String) -> PkgConfigPackage? throws {
+        return self.package(index)
+    }
+
+    public availablePackages() -> [PkgConfigPackage] throws {
         guard let executable = executablePath else {
             throw // FIXME: Some type that means "not available"
         }
