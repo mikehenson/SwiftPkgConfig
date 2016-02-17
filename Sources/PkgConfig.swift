@@ -5,33 +5,51 @@ public struct PkgConfigResource {
     let version: String
 }
 
+public enum PkgConfigError: ErrorType {
+    case ServiceNotAvailable
+    case ParsingCommandOutput
+    case CommandExecutionFailed
+}
+
 public struct PkgConfigPackage {
     let name: String
     let description: String
-    let provides: [PkgConfigResource]
-    //let requires: [PkgConfigResource]
-    //let cflags: String
-    //let lflags: String
+
+    var provides: [PkgConfigResource] {
+        print("FIXME: Implement")
+        return []
+    }
+    var requires: [PkgConfigResource] {
+        print("FIXME: Implement")
+        return []
+    }
+    var cflags: String {
+        print("FIXME: Implement")
+        return ""
+    }
+    var lflags: String {
+        print("FIXME: Implement")
+        return ""
+    }
 }
 
 // Note: On ubuntu linux, pkg-config returns a 0 exit status to signal success.
 //       That might not be the case in every environment.
 public class PkgConfig {
     private static let sharedInstance = PkgConfig()
-    private let executablePath: String?
-
-    private init() {
+    private lazy var executablePath: String? = {
         let fileManager = NSFileManager.defaultManager()
 
         // Just to get started, for Ubuntu
         let path = "/usr/bin/pkg-config"
 
-        if fileManager.isExecutableFileAtPath(path) {
-            executablePath = path
-	}
-    }
+        return fileManager.isExecutableFileAtPath(path) ?
+            path : nil
+    }()
 
-    private pathIsExecutable(path: String) -> Bool {
+    private init() {}
+
+    private func pathIsExecutable(path: String) -> Bool {
         let fileManager = NSFileManager.defaultManager()
         return fileManager.isExecutableFileAtPath(path)
     }
@@ -40,20 +58,22 @@ public class PkgConfig {
         return executablePath != nil
     }
 
-    public static defaultPkgConfig() -> PkgConfig {
+    public static func defaultPkgConfig() -> PkgConfig {
         return PkgConfig.sharedInstance
     }
 
     // We could also do a callback-based version of this api, but these calls
     // are supposed to be very short-term executions. It might be convenient
     // in the future, though.
-    public packageExists(package:String) -> Bool throws {
+    public func packageExists(package:String) throws -> Bool {
         guard let executable = executablePath else {
-            throw // FIXME: Some type that means "not available"
-	}
+            throw PkgConfigError.ServiceNotAvailable
+        }
 
         let arguments = ["--exists", package]
-        let task = NSTask(executable, arguments: arguments)
+        let task = NSTask()
+        task.launchPath = executable
+        task.arguments  = arguments
 
         task.launch()
         task.waitUntilExit()
@@ -67,58 +87,66 @@ public class PkgConfig {
         return false
     }
 
-    public package(package: String) -> PkgConfigPackage? throws {
+    public func package(package: String) throws -> PkgConfigPackage? {
+        // FIXME: Implement
+        return nil
     }
 
-    subscript(index: String) -> PkgConfigPackage? throws {
-        return self.package(index)
+    subscript(index: String) -> PkgConfigPackage? {
+        do {
+            return try self.package(index)
+        }
+        catch _ {}
+        return nil
     }
 
-    public availablePackages() -> [PkgConfigPackage] throws {
+    public func availablePackages() throws -> [PkgConfigPackage] {
         guard let executable = executablePath else {
-            throw // FIXME: Some type that means "not available"
+            throw PkgConfigError.ServiceNotAvailable
         }
 
         let arguments = ["--list-all"]
-        let task = NSTask(executable, arguments: arguments)
+        let task = NSTask()
+        task.launchPath = executable
+        task.arguments  = arguments
 
         let stdout = NSPipe()
         task.standardOutput = stdout
         task.launch()
         task.waitUntilExit()
 
-        func lineToTuple(line: String) -> (tag: String, description: String) {
-            let parts = line.characters.lazy
-                            .split(" ", allowEmptySubsequences: false)
-                            .map(String.init)
-
-            // FIXME: It would be better if we didn't have to undo work. We should:
-            //        1) strip any prefixing spaces
-            //        2) take everything up to the first space
-            //        3) strip spaces
-            //        4) take everything to the EOL
-            switch parts.count {
-                case 0:
-                    return (tag:"", description: "")
-                case 1:
-                    return (tag:parts[0], description: "")
-                default:
-                    return (tag:parts[0], description: parts.dropFirst().joinWithSeparator(" "))
-        }
-
         if task.terminationStatus == 0 {
             let data = stdout.fileHandleForReading.readDataToEndOfFile()
             // FIXME: Assumes UTF-8 encoding of the output
-            let string = String(data: data, encoding: NSUTF8StringEncoding)
+            guard let string = String(data: data, encoding: NSUTF8StringEncoding) else {
+                throw PkgConfigError.ParsingCommandOutput
+            }
+
             return string.characters.lazy
-                         .split("\n", allowEmptySubsequences: false)
-                         .map(String.init)
-                         .map(lineToTuple)
+                         .split("\n", allowEmptySlices: false)
+                         .map(String.init(_:))
+                         .map {
+                             (line:String) -> PkgConfigPackage in
+                             let parts = line.characters.lazy
+                                             .split(" ", allowEmptySlices: false)
+                                             .map(String.init(_:))
+                             var name: String?
+                             var description: String?
+                             if parts.count >= 2 {
+                                 description = parts.dropFirst().joinWithSeparator(" ")
+                             }
+                             if parts.count >= 1 {
+                                 name = parts[0]
+                             }
+
+                             return PkgConfigPackage(
+                                 name: name ?? "",
+                                 description: description ?? ""
+                             )
+                         }
         }
 
-        // Figure out what to throw
-
-        throw // that thing
+        throw PkgConfigError.CommandExecutionFailed
     }
 
 }
